@@ -1,0 +1,68 @@
+{
+  "date": "2026-09-03",
+  "issue": "001",
+  "title": "示例日报",
+  "subtitle": "每日精选",
+  "byline": "署名（可选）",
+  "urgent_label": "48 小时内截止",
+  "filters": [
+    { "key": "urgent", "label": "紧急" },
+    { "key": "star", "label": "重点" },
+    { "key": "online", "label": "可线上" }
+  ],
+  "stats": [
+    { "key": "urgent", "label": "紧急" },
+    { "key": "star", "label": "重点" },
+    { "key": "online", "label": "可线上" }
+  ],
+  "sections": [
+    {
+      "icon": "⏰",
+      "title": "48 小时内截止",
+      "css_class": "s-red",
+      "activities": [
+        {
+          "title": "某某黑客松（示例条目）",
+          "url": "https://example.com/event",
+          "time": "2026-09-06 ~ 09-07",
+          "format": "线上 + 上海线下",
+          "deadline": "09-05 23:59",
+          "fee": "免费",
+          "highlight": "一句话说明为什么值得参加，不要复述标题",
+          "urgent": true,
+          "star": true,
+          "online": true
+        }
+      ]
+    },
+    {
+      "icon": "🌍",
+      "title": "海外·线上可参与",
+      "css_class": "s-blue",
+      "activities": [
+        {
+          "title": "Another Online Event",
+          "url": "https://example.com/another",
+          "time": "2026-09-20",
+          "format": "线上",
+          "deadline": "",
+          "fee": "Free",
+          "highlight": "时差友好，国内晚上可参加",
+          "urgent": false,
+          "star": false,
+          "online": true
+        }
+      ]
+    }
+  ],
+  "unverified": [
+    "某某活动官网未更新，时间待确认（来源：某公众号转载，2026-09-02）"
+  ],
+  "sources": {
+    "covered": "官网、聚合站、公众号反查、HN Algolia API",
+    "gaps": [
+      "Reddit / X / Facebook 在本环境域名被阻断，本阶段不采集",
+      "小红书笔记正文需登录，仅做标题反查"
+    ]
+  }
+}

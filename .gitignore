@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+web/
+my_data.json
+out.html
