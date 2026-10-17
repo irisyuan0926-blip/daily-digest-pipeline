@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-日报邮件「摘要 + 网页链接」渲染器 —— 单封 ≈2.6KB，规避大体积拦截。
+日报邮件「摘要 + 网页链接」渲染器 —— 单封 < 2KB，永不拆封、稳定送达 163。
 
 用法:
     python3 render_email_digest.py data.json out.html "https://<网页链接>" [紧急条数上限]
 
-产出：渐变 banner 头 + 统计块 + 紧急清单（默认 ≤5 条）+ 大按钮跳完整版 + 明文地址兜底。
-完整条目不进邮件，全部放在网页版。
+产出：渐变 banner 头 + 统计块 + 紧急清单（默认 ≤12 条）+ 大按钮跳完整版 + 明文地址兜底。
+完整条目不进邮件，全部放在网页版（核心架构：内容全量上网页，通知只发摘要）。
+
+紧急判定双通道（缺一不可，否则紧急清单会空）：
+    ① 条目自带 urgent=True；
+    ② 归在标题含「48」的板块（如「⏰ 48小时内截止 / 48h 紧急」）——采集阶段通常不写
+       urgent 字段，靠板块归属表达紧急，故必须回退识别。
+统计块可配：data["stats"] = [{"key":..., "label":...}, ...]（key 对应条目布尔字段）。
 """
 import json
 import sys
@@ -28,7 +34,13 @@ def render(data: dict, link: str, max_urgent: int = 5) -> str:
     urgent_label = data.get("urgent_label", "紧急项")
     stats_def = data.get("stats") or DEFAULT_STATS
 
-    acts = [a for s in data.get("sections", []) for a in s["activities"]]
+    secs = data.get("sections", [])
+    # 紧急回退：板块标题含「48」→ 其下条目一律视为紧急（采集不写 urgent 字段时的兜底）。
+    for s in secs:
+        if "48" in (s.get("title") or ""):
+            for a in s.get("activities", []):
+                a["urgent"] = True
+    acts = [a for s in secs for a in s["activities"]]
     total = len(acts)
 
     stats = (f'<td class="s"><b>{total}</b><br>总数</td>' + "".join(
@@ -36,7 +48,8 @@ def render(data: dict, link: str, max_urgent: int = 5) -> str:
         for s in stats_def[:3]
     ))
 
-    urgent = [a for a in acts if a.get("urgent")][:max_urgent]
+    # 摘要邮件至少展示 12 条紧急（48h 段常接近此量），故取 max(max_urgent, 12)。
+    urgent = [a for a in acts if a.get("urgent")][:max(max_urgent, 12)]
     if urgent:
         li = "".join(
             f'<li><a href="{esc(a["url"])}">{esc(a["title"])}</a>'

@@ -1,20 +1,9 @@
 #!/usr/bin/env python3
 """
-通用日报网页渲染器 —— 不受邮件客户端 CSS 限制，可做统计 / 筛选 / 响应式。
+日报网页版渲染器 —— 不受邮件客户端 CSS 限制，可以做筛选/搜索/统计。
 
 用法:
-    python3 render_web.py data.json out.html [fresh|mint|sky|warm]
-
-主题:
-    fresh  默认。只把顶部 banner 换成清新渐变，正文保持中性配色（最安全，适合只想换头图）
-    mint   薄荷青整页配色    sky  晴空白蓝    warm  暖阳米白
-
-数据格式见同目录 digest_template.json：
-    title / subtitle / byline / date / issue        头部文案
-    filters  筛选按钮 [{key,label}]，key 对应条目上的布尔字段
-    stats    统计块 [{key,label}]，第一个总是「总数」
-    sections [{icon,title,css_class,activities[]}]
-    unverified[] / sources{covered,gaps[]}
+    python3 render_web.py digest_data_2026-09-03.json output.html
 """
 import json
 import sys
@@ -23,14 +12,7 @@ from pathlib import Path
 
 esc = lambda s: html.escape(str(s or ""), quote=False)
 
-DEFAULT_FILTERS = [{"key": "urgent", "label": "紧急"},
-                   {"key": "star", "label": "重点"},
-                   {"key": "online", "label": "可线上"}]
-DEFAULT_STATS = [{"key": "urgent", "label": "紧急"},
-                 {"key": "star", "label": "重点"},
-                 {"key": "online", "label": "可线上"}]
-
-# ---------- 布局骨架（颜色全部走 CSS 变量，默认值 = 中性配色） ----------
+# ---------- 布局骨架（与旧版原型完全一致；颜色走变量，默认值 = 旧版原配色） ----------
 BASE = """
 *{box-sizing:border-box}
 :root{
@@ -109,14 +91,18 @@ body{margin:0;background:var(--bg);color:var(--text);
 @media(max-width:600px){.wrap{padding:18px 13px 40px}.hero{padding:24px 20px}.hero h1{font-size:23px}}
 """
 
+# ---------- 主题：默认 fresh 只换 banner 色块，正文配色保持旧版原样 ----------
 THEMES = {
-    # 默认：只换 banner，正文不动
+    # 清新 banner（默认）：淡青绿→天蓝渐变，只动顶部色块，正文一律不改
     "fresh": """
 :root{
 --hero:linear-gradient(135deg,#74D4BE 0%,#5FB6E6 100%);
 --hero-shadow:0 6px 18px rgba(47,163,150,.25);
 }
 """,
+
+# ---------- 主题：只换颜色变量，不动结构 ----------
+    # 薄荷清新：淡青绿 + 天蓝，整页换色
     "mint": """
 :root{
 --bg:linear-gradient(180deg,#F2FBF8 0%,#EEF6FC 100%);
@@ -125,12 +111,14 @@ THEMES = {
 --card:#FFFFFF;--line:#E3F0EC;--shadow:rgba(16,120,110,.08);
 --text:#1E3A38;--muted:#779390;--muted-strong:#3E5C59;
 --accent:#0DA592;--accent-visited:#4C8FD0;--soft:#E9F8F4;
---hover-line:#7FD3C4;--mt-strong:#D9605A;--hl-strong:#0DA592;
 --c-red:#D9605A;--c-blue:#3D8FD1;--c-green:#1E9878;--c-amber:#CE9331;
---bu-bg:#FDECEB;--bu-fg:#C24B45;--bs-bg:#FFF6E3;--bs-fg:#B5821C;
---bo-bg:#E5F7F0;--bo-fg:#12805F;--bh-bg:#E8F1FC;--bh-fg:#2F6FB5;
+--bu-bg:#FDECEB;--bu-fg:#C24B45;
+--bs-bg:#FFF6E3;--bs-fg:#B5821C;
+--bo-bg:#E5F7F0;--bo-fg:#12805F;
+--bh-bg:#E8F1FC;--bh-fg:#2F6FB5;
 }
 """,
+    # 晴空白蓝：更冷、更干净的蓝白
     "sky": """
 :root{
 --bg:linear-gradient(180deg,#F6FAFF 0%,#EFF5FC 100%);
@@ -139,12 +127,14 @@ THEMES = {
 --card:#FFFFFF;--line:#E4EDF7;--shadow:rgba(40,90,150,.08);
 --text:#22364A;--muted:#7A8FA6;--muted-strong:#40546A;
 --accent:#2F86C4;--accent-visited:#7A6FC4;--soft:#EAF4FC;
---hover-line:#8FC6F5;--mt-strong:#D4665F;--hl-strong:#2F86C4;
 --c-red:#D4665F;--c-blue:#2F86C4;--c-green:#2E9A7C;--c-amber:#CE9331;
---bu-bg:#FDEDEB;--bu-fg:#C24B45;--bs-bg:#FFF6E3;--bs-fg:#B5821C;
---bo-bg:#E6F7F1;--bo-fg:#12805F;--bh-bg:#E9F1FC;--bh-fg:#2F6FB5;
+--bu-bg:#FDEDEB;--bu-fg:#C24B45;
+--bs-bg:#FFF6E3;--bs-fg:#B5821C;
+--bo-bg:#E6F7F1;--bo-fg:#12805F;
+--bh-bg:#E9F1FC;--bh-fg:#2F6FB5;
 }
 """,
+    # 暖阳米白：奶油底 + 蜜桃橙，柔和暖调
     "warm": """
 :root{
 --bg:linear-gradient(180deg,#FDF9F3 0%,#FBF3EE 100%);
@@ -153,10 +143,11 @@ THEMES = {
 --card:#FFFFFF;--line:#F0E5DA;--shadow:rgba(160,110,80,.09);
 --text:#3A2E28;--muted:#96867C;--muted-strong:#5B4B42;
 --accent:#D97B4A;--accent-visited:#9A7BC4;--soft:#FDF0E7;
---hover-line:#F0B78E;--mt-strong:#D4655E;--hl-strong:#D97B4A;
 --c-red:#D4655E;--c-blue:#3D8FD1;--c-green:#4E9A6E;--c-amber:#C98A2E;
---bu-bg:#FDECEB;--bu-fg:#C24B45;--bs-bg:#FFF4DF;--bs-fg:#B5821C;
---bo-bg:#E9F7EE;--bo-fg:#3F8A5C;--bh-bg:#E8F1FC;--bh-fg:#2F6FB5;
+--bu-bg:#FDECEB;--bu-fg:#C24B45;
+--bs-bg:#FFF4DF;--bs-fg:#B5821C;
+--bo-bg:#E9F7EE;--bo-fg:#3F8A5C;
+--bh-bg:#E8F1FC;--bh-fg:#2F6FB5;
 }
 """,
 }
@@ -183,28 +174,32 @@ document.querySelectorAll('.f').forEach(function(b){
 });
 """
 
-BADGE_CLS = {"urgent": "bu", "star": "bs", "online": "bo"}
 
-
-def render_card(a: dict, keys: list) -> str:
+def render_card(a: dict) -> str:
     badges = ""
-    for key in keys:
-        if not a.get(key):
-            continue
-        cls = BADGE_CLS.get(key, "bh")
-        label = "紧急 " + (a.get("deadline") or "") if key == "urgent" else {
-            "star": "重点", "online": "可线上"}.get(key, key)
-        badges += f'<span class="bd {cls}">{esc(label)}</span>'
-    if a.get("location"):
-        badges += f'<span class="bd bh">{esc(a["location"])}</span>'
+    if a.get("urgent"):
+        badges += f'<span class="bd bu">紧急 {esc(a.get("deadline") or "")}</span>'
+    if a.get("star"):
+        badges += '<span class="bd bs">主线相关</span>'
+    if a.get("online"):
+        badges += '<span class="bd bo">可线上</span>'
+    if "杭州" in (a.get("format") or ""):
+        badges += '<span class="bd bh">杭州</span>'
 
     meta = "｜".join(
         x for x in [a.get("time"), a.get("format"), a.get("deadline"), a.get("fee")] if x
     )
     meta_html = f'<div class="mt">{esc(meta)}</div>' if meta else ""
+
     hl = a.get("highlight")
     hl_html = f'<div class="hl"><b>亮点：</b>{esc(hl)}</div>' if hl else ""
-    flags = "".join(f' data-{k}="1"' for k in keys if a.get(k))
+
+    flags = ""
+    for key, val in [("urgent", a.get("urgent")), ("star", a.get("star")),
+                     ("online", a.get("online")), ("hz", "杭州" in (a.get("format") or ""))]:
+        if val:
+            flags += f' data-{key}="1"'
+
     cls = "card urgent" if a.get("urgent") else "card"
     return (f'<div class="{cls}"{flags}>'
             f'<h3 class="ct"><a href="{esc(a["url"])}" target="_blank" rel="noopener">'
@@ -213,36 +208,35 @@ def render_card(a: dict, keys: list) -> str:
 
 def render(data: dict, theme: str = "fresh") -> str:
     theme = theme if theme in THEMES else "fresh"
-    title = data.get("title", "每日日报")
-    subtitle = data.get("subtitle", "每日精选")
-    byline = data.get("byline", "")
     date_str = data.get("date", "")
     issue = data.get("issue", "001")
     secs = data["sections"]
     acts = [a for s in secs for a in s["activities"]]
     total = len(acts)
 
-    filters_def = data.get("filters") or DEFAULT_FILTERS
-    stats_def = data.get("stats") or DEFAULT_STATS
-    keys = [f["key"] for f in filters_def]
+    n_urgent = sum(1 for a in acts if a.get("urgent"))
+    n_star = sum(1 for a in acts if a.get("star"))
+    n_online = sum(1 for a in acts if a.get("online"))
+    n_hz = sum(1 for a in acts if "杭州" in (a.get("format") or ""))
 
-    stats = (f'<div class="stat"><div class="n">{total}</div>'
-             f'<div class="l">总数</div></div>') + "".join(
-        f'<div class="stat"><div class="n">{sum(1 for a in acts if a.get(s["key"]))}</div>'
-        f'<div class="l">{esc(s["label"])}</div></div>' for s in stats_def
+    stats = "".join(
+        f'<div class="stat"><div class="n">{v}</div><div class="l">{l}</div></div>'
+        for v, l in [("55" if False else total, "活动总数"), (n_urgent, "紧急"),
+                     (n_star, "主线相关"), (n_online, "可线上"), (n_hz, "杭州本地")]
     )
 
-    filters = (f'<button class="f on" data-k="all">全部'
-               f'<span class="c">{total}</span></button>') + "".join(
-        f'<button class="f" data-k="{esc(f["key"])}">{esc(f["label"])}'
-        f'<span class="c">{sum(1 for a in acts if a.get(f["key"]))}</span></button>'
-        for f in filters_def
+    filters = "".join(
+        f'<button class="f{" on" if k == "all" else ""}" data-k="{k}">{l}'
+        f'<span class="c">{c}</span></button>'
+        for k, l, c in [("all", "全部", total), ("urgent", "紧急", n_urgent),
+                        ("star", "主线相关", n_star), ("online", "可线上", n_online),
+                        ("hz", "杭州", n_hz)]
     )
 
     body = ""
     for s in secs:
         n = len(s["activities"])
-        cards = "".join(render_card(a, keys) for a in s["activities"])
+        cards = "".join(render_card(a) for a in s["activities"])
         body += (f'<h2 class="sec {s.get("css_class", "s-gray")}">'
                  f'<span>{s["icon"]} {esc(s["title"])}</span><span class="n">{n} 条</span></h2>'
                  f'<div class="grid">{cards}</div>')
@@ -250,7 +244,7 @@ def render(data: dict, theme: str = "fresh") -> str:
     unver = data.get("unverified") or []
     if unver:
         li = "".join(f"<li>{esc(u)}</li>" for u in unver)
-        body += (f'<h2 class="sec s-gray"><span>待核实</span>'
+        body += (f'<h2 class="sec s-gray"><span>待核实（明天跟进）</span>'
                  f'<span class="n">{len(unver)} 条</span></h2>'
                  f'<div class="box"><ul>{li}</ul></div>')
 
@@ -262,24 +256,20 @@ def render(data: dict, theme: str = "fresh") -> str:
                  f'<div><b>已覆盖：</b>{esc(src.get("covered", ""))}</div>'
                  f'<div style="margin-top:8px"><b>未覆盖 / 缺口：</b></div><ul>{gl}</ul></div>')
 
-    tag = f"第 {esc(issue)} 期 · {esc(subtitle)}"
-    if byline:
-        tag += f" · 由 {esc(byline)} 整理"
-
     return (
         "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n"
         "<meta charset=\"UTF-8\">\n"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">\n"
-        f"<title>{esc(title)} · {esc(date_str)}</title>\n"
+        f"<title>黑客松 &amp; AI 活动日报 · {esc(date_str)}</title>\n"
         f"<style>{BASE}\n{THEMES[theme]}</style>\n</head>\n<body>\n<div class=\"wrap\">\n"
-        f'<div class="hero"><div class="tag">{tag}</div>'
-        f'<h1>{esc(title)}</h1>'
-        f'<div class="sub">{esc(date_str)} · 共 {total} 条 · 点击标题直达</div>'
+        f'<div class="hero"><div class="tag">第 {esc(issue)} 期 · 每日精选 · 由 哈哈 整理</div>'
+        f'<h1>黑客松 &amp; AI 活动日报</h1>'
+        f'<div class="sub">{esc(date_str)} · 共 {total} 条 · 点击标题直达报名页</div>'
         f'<div class="stats">{stats}</div></div>\n'
         f'<div class="bar"><span class="lb">筛选：</span>{filters}</div>\n'
         f"{body}\n"
-        f'<div class="foot">{esc(byline)} 自动生成 · 第 {esc(issue)} 期<br>'
-        f'订阅渠道为摘要，完整版见此页</div>\n'
+        f'<div class="foot">由 哈哈 每日 19:00 自动生成 · 第 {esc(issue)} 期<br>'
+        f'邮件为精简摘要，完整版见此页</div>\n'
         "</div>\n"
         f"<script>{JS}</script>\n</body></html>\n"
     )
@@ -288,14 +278,16 @@ def render(data: dict, theme: str = "fresh") -> str:
 def main():
     if len(sys.argv) < 3:
         print(__doc__)
+        print("可选第 4 个参数指定主题: fresh(清新banner,默认,正文不变) / mint(薄荷) / sky(晴空蓝) / warm(暖阳米白)")
         sys.exit(1)
     data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     out = Path(sys.argv[2])
-    out.parent.mkdir(parents=True, exist_ok=True)   # 输出目录不存在时自动建，别让用户在 mkdir 上踩坑
-    out.write_text(render(data, sys.argv[3] if len(sys.argv) > 3 else "fresh"), encoding="utf-8")
+    out.parent.mkdir(parents=True, exist_ok=True)   # 输出目录不存在时自动建
+    theme = sys.argv[3] if len(sys.argv) > 3 else "fresh"
+    out.write_text(render(data, theme), encoding="utf-8")
     size = len(out.read_text(encoding="utf-8").encode("utf-8"))
     n = sum(len(s["activities"]) for s in data["sections"])
-    print(f"OK  {out}  {size/1024:.1f} KB  {n} 条")
+    print(f"OK  {out}  {size/1024:.1f} KB  {n} 条活动")
 
 
 if __name__ == "__main__":
